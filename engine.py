@@ -25,14 +25,14 @@ def weights_for(cohorts,mode,holding):
  w={}
  for cohort in cohorts:
   for basket,sign in ((cohort['winners'],1),(cohort['losers'],-1)):
-   if mode=='long_only' and sign<0:continue
+   if mode in ('long_only','passive_long') and sign<0:continue
    for s in basket:w[s]=w.get(s,0)+sign/len(basket)/holding
  return {s:v for s,v in w.items() if abs(v)>1e-12}
 
 def simulate(panel,cfg):
  if cfg['holding_months']<1 or cfg['skip_months']<0 or not 0<cfg['quantile']<=0.5:raise ValueError('Invalid cohort settings')
  if cfg['cost_bps']<0 or cfg['borrow_rate']<0:raise ValueError('Invalid costs')
- if cfg['mode'] not in ('long_only','long_short'):raise ValueError('Invalid mode')
+ if cfg['mode'] not in ('long_only','long_short','passive_long'):raise ValueError('Invalid mode')
  cohorts=[];previous={};records=[];selections=[];equity=peak=cfg['initial_capital']
  months=sorted(panel);holding=cfg['holding_months'];started=False
  for m in months:
@@ -42,6 +42,8 @@ def simulate(panel,cfg):
   n=math.floor(len(ranking)*cfg['quantile'])
   if len(ranking)>=cfg['minimum_universe'] and n>=1:
    winners=[s for score,s in ranking[-n:]];losers=[s for score,s in ranking[:n]]
+   if cfg['mode']=='passive_long':
+    winners=[s for score,s in ranking];losers=[]
    cohorts.append({'start':m,'end':m+holding-1,'winners':winners,'losers':losers})
    for score,s in ranking:selections.append({'formation_month':formation,'holding_start':m,'symbol':s,'score':score,'basket':'winner' if s in winners else 'loser' if s in losers else 'middle'})
   w=weights_for(cohorts,cfg['mode'],holding)
