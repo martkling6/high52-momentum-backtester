@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from daily import simulate
 from download_daily import adjusted_bar
 from exit_rules import process_exits, validate_exit_panel
-from exit_study import VARIANTS
+from exit_study import VARIANTS, BE_VARIANTS
 
 
 class ExitRulesTests(unittest.TestCase):
@@ -29,6 +29,38 @@ class ExitRulesTests(unittest.TestCase):
         self.assertEqual(len(VARIANTS), 6)
         self.assertEqual({(d, f) for _, d, f in VARIANTS},
                          {(d, f) for d in (3, 5, 10) for f in (1/3, 1/2)})
+
+    def test_be_only_grid_and_full_position_until_next_day(self):
+        self.assertEqual(BE_VARIANTS, [(f'day{d}_be_only', d, 0) for d in (3,5,10)])
+        for _, days, fraction in BE_VARIANTS:
+            self.setUp()
+            # Day N crosses entry intraday but closes above: stop not yet active.
+            self.step(days-1, l=90, days=days, fraction=0)
+            self.assertFalse(self.sleeves[0]['positions']['A']['armed'])
+            self.step(days, days=days, fraction=0)
+            self.assertTrue(self.sleeves[0]['positions']['A']['armed'])
+            self.assertEqual(self.sleeves[0]['units']['A'], 9)
+            self.assertEqual(self.orders, [])
+            self.step(days+1, l=99, days=days, fraction=0, rate=.001)
+            self.assertEqual(len(self.orders), 1)
+            self.assertEqual(self.orders[0]['units'], 9)
+            self.assertEqual(self.orders[0]['price'], 100)
+            self.assertAlmostEqual(self.sleeves[0]['cash'], 899.1)
+
+    def test_be_only_activation_gap_sells_all_at_worse_open(self):
+        self.step(2, fraction=0)
+        self.step(3, o=90, h=110, l=85, c=100, fraction=0, rate=.001)
+        self.assertEqual(len(self.orders), 1)
+        self.assertEqual(self.orders[0]['reason'], 'break_even_stop')
+        self.assertEqual(self.orders[0]['units'], 9)
+        self.assertEqual(self.orders[0]['price'], 90)
+        self.assertAlmostEqual(self.sleeves[0]['cash'], 809.19)
+
+    def test_be_only_failed_check_never_arms_later(self):
+        self.step(2, c=100, l=90, fraction=0)
+        for i in range(3, 15): self.step(i, fraction=0)
+        self.assertFalse(self.sleeves[0]['positions']['A']['armed'])
+        self.assertEqual(self.orders, [])
 
     def test_each_variant_waits_until_next_open(self):
         for _, days, fraction in VARIANTS:
@@ -156,7 +188,10 @@ class ExitIntegrationTests(unittest.TestCase):
                                      '--out', str(root/'results')], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             with (root/'results/comparison.csv').open() as f: rows = list(csv.DictReader(f))
-            self.assertEqual(len(rows), 24)
-            self.assertEqual(len(list((root/'results').glob('*/orders.csv'))), 24)
+            self.assertEqual(len(rows), 33)
+            self.assertEqual(len(list((root/'results').glob('*/orders.csv'))), 33)
+            be_rows = [r for r in rows if r['variant'].endswith('_be_only')]
+            self.assertEqual(len(be_rows), 9)
+            self.assertTrue(all(int(r['partial_exits'])==0 and int(r['break_even_stops'])>0 for r in be_rows))
             self.assertEqual(len(json.loads((root/'results/run.json').read_text())['settings']['exit_days']), 3)
             self.assertTrue(all(float(r['total_costs'])==0 for r in rows if r['cost_bps']=='0'))
