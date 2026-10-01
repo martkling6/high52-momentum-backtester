@@ -11,14 +11,24 @@ def load(path):
    if not all(math.isfinite(v) and v>0 for v in (o,c)):raise ValueError('Invalid daily price')
    if s in panel.setdefault(d,{}):raise ValueError('Duplicate daily bar')
    panel[d][s]={'open':o,'close':c}
+   if 'high' in x or 'low' in x:
+    h=float(x['high']);l=float(x['low'])
+    if not all(math.isfinite(v) and v>0 for v in (h,l)) or l>min(o,c) or h<max(o,c):raise ValueError('Invalid OHLC range')
+    panel[d][s].update(high=h,low=l)
  if not panel:raise ValueError('Empty panel')
  symbols=set.union(*(set(v) for v in panel.values()))
  if any(set(v)!=symbols for v in panel.values()):raise ValueError('Incomplete daily panel')
  return panel
 
-def simulate(panel,mode='high52',bps=10,initial=10000,holding=6,skip=1,minimum=20,attribution=None):
+def simulate(panel,mode='high52',bps=10,initial=10000,holding=6,skip=1,minimum=20,attribution=None,exit_days=None,exit_fraction=None):
  if mode not in ('high52','passive') or bps<0 or initial<=0 or holding<1 or skip<0:raise ValueError('Invalid settings')
+ if exit_days is not None:
+  from exit_rules import validate_exit_panel,process_exits
+  if mode!='high52' or exit_days not in (3,5,10) or exit_fraction not in (1/3,1/2):raise ValueError('Invalid exit variant')
+  validate_exit_panel(panel)
+ elif exit_fraction is not None:raise ValueError('Exit fraction requires exit days')
  sleeves=[{'cash':initial/holding,'units':{}} for _ in range(holding)]
+ for sleeve in sleeves:sleeve['positions']={}
  dates=sorted(panel);symbols=sorted(panel[dates[0]]);history=[];formations={}
  rows=[];orders=[];signals=[];started=False;peak=previous=initial;rate=bps/10000
  for i,d in enumerate(dates):
@@ -42,17 +52,21 @@ def simulate(panel,mode='high52',bps=10,initial=10000,holding=6,skip=1,minimum=2
     flows[s]+=notional-fee
     orders.append({'date':str(d),'sleeve':month%holding,'symbol':s,'side':'SELL','units':units,'price':price,'fee':fee})
    sleeve['units']={}
+   sleeve['positions']={}
    if len(rank)>=minimum:
     selected=[s for score,s in (rank[-max(1,math.floor(len(rank)*0.3)):] if mode=='high52' else rank)]
     budget=sleeve['cash']/(1+rate);per=budget/len(selected)
     for s in selected:
      price=panel[d][s]['open'];units=per/price;fee=per*rate
      sleeve['units'][s]=units;sleeve['cash']-=per+fee
+     if exit_days is not None:sleeve['positions'][s]={'entry':price,'entry_index':i,'pending':False,'armed':False}
      flows[s]-=per+fee
      orders.append({'date':str(d),'sleeve':month%holding,'symbol':s,'side':'BUY','units':units,'price':price,'fee':fee})
     if sleeve['cash']<-1e-7:raise ValueError('Negative cash')
     sleeve['cash']=max(0,sleeve['cash']);started=True
     signals.append({'execution_date':str(d),'formation_month':month-1-skip,'selected':','.join(selected)})
+  if exit_days is not None:
+   process_exits(sleeves,panel[d],i,d,exit_days,exit_fraction,rate,orders,flows)
   cash=sum(x['cash'] for x in sleeves)
   holdings=sum(units*panel[d][s]['close'] for x in sleeves for s,units in x['units'].items())
   equity=cash+holdings
@@ -73,6 +87,8 @@ def simulate(panel,mode='high52',bps=10,initial=10000,holding=6,skip=1,minimum=2
     if not math.isclose(sum(contributions),equity-previous,rel_tol=1e-8,abs_tol=1e-6):raise ValueError('Attribution does not reconcile with equity')
   previous=equity;history.append((d,panel[d]))
  if not rows:raise ValueError('No daily portfolios after warmup')
+ if exit_days is not None:
+  for order in orders:order.setdefault('reason','entry' if order['side']=='BUY' else 'scheduled_rotation')
  return rows,orders,signals
 
 def summary(rows,initial=10000):
