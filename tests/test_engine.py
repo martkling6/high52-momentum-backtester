@@ -28,4 +28,23 @@ class Tests(unittest.TestCase):
  def test_short_borrow(self):
   a,_=simulate(self.panel,{**self.cfg,'mode':'long_short'})
   self.assertTrue(all(x['borrow_cost']>0 for x in a))
+ def test_passive_matches_exposure_and_start(self):
+  active,_=simulate(self.panel,self.cfg)
+  passive,sel=simulate(self.panel,{**self.cfg,'mode':'passive_long'})
+  self.assertEqual([x['month'] for x in active],[x['month'] for x in passive])
+  for x,y in zip(active,passive):self.assertAlmostEqual(x['gross_exposure'],y['gross_exposure'])
+  self.assertEqual(sum(x['basket']=='winner' for x in sel if x['formation_month']==24000),30)
+  self.assertTrue(all(x['borrow_cost']==0 for x in passive))
+ def test_passive_uses_lagged_universe(self):
+  p=copy.deepcopy(self.panel)
+  for m in range(24002,24036):p[m]['NEW']={'score':0.99,'return':0.5}
+  rows,sel=simulate(p,{**self.cfg,'mode':'passive_long'})
+  self.assertFalse(any(x['symbol']=='NEW' and x['holding_start']<=24003 for x in sel))
+ def test_passive_future_mutations(self):
+  cfg={**self.cfg,'mode':'passive_long'}
+  a,_=simulate(self.panel,cfg);p=copy.deepcopy(self.panel)
+  for m in range(24020,24036):
+   for x in p[m].values():x['return']=-0.2
+  b,_=simulate(p,cfg)
+  self.assertEqual([x for x in a if x['month']<24020],[x for x in b if x['month']<24020])
 if __name__=='__main__':unittest.main()
