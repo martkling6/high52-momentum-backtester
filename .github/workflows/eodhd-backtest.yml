@@ -1,0 +1,62 @@
+name: Exploratory EODHD 52W Test
+on:
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Mindestens 20 Symbole mit Leerzeichen; heutige Liste = Survivorship-Bias'
+        required: true
+        type: string
+      start_date:
+        description: 'Datenbeginn inklusive 12 Monate Warmup'
+        required: true
+        default: '2000-01-01'
+        type: string
+      end_date:
+        description: 'Letzter Kalendertag eines abgeschlossenen Monats'
+        required: true
+        default: '2025-12-31'
+        type: string
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYMBOLS: ${{ inputs.symbols }}
+      START_DATE: ${{ inputs.start_date }}
+      END_DATE: ${{ inputs.end_date }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+      - name: Validate symbol input
+        run: |
+          python - <<'PY'
+          import os,re
+          from pathlib import Path
+          symbols=os.environ['SYMBOLS'].split()
+          if not 20<=len(symbols)<=200 or any(not re.fullmatch(r'[A-Za-z0-9_.-]+',s) for s in symbols):
+              raise SystemExit('20 bis 200 gueltige Symbole erforderlich')
+          Path('symbols.txt').write_text('\n'.join(symbols))
+          PY
+      - name: Download exploratory sample
+        env:
+          EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
+        run: python download_eodhd.py --symbols symbols.txt --start "$START_DATE" --end "$END_DATE" --out data/eod.csv
+      - name: Run both portfolio modes
+        run: |
+          python engine.py --data data/eod.csv --manifest data/eod.manifest.json --config configs/long_only.json --out results/long_only
+          python engine.py --data data/eod.csv --manifest data/eod.manifest.json --config configs/long_short.json --out results/long_short
+          cp README.md results/METHODOLOGY.md
+          cp data/eod.manifest.json results/data-manifest.json
+          cp symbols.txt results/symbols.txt
+          git rev-parse HEAD > results/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: high52-exploratory-results-${{ github.run_id }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 30
