@@ -1,0 +1,42 @@
+name: EODHD Data Audit
+on:
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        description: 'Kurs-Stichprobe 1-25; keine Strategieauswertung'
+        required: true
+        default: '12'
+        type: string
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+      - name: Check membership and price coverage
+        env:
+          EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
+          SAMPLE_SIZE: ${{ inputs.sample_size }}
+        run: python data_audit.py --sample-size "$SAMPLE_SIZE" --out audit-results
+      - name: Show diagnostic status
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path('audit-results/audit.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Data audit\n\nStatus: '+r['status']+'\n\n')
+              f.write('Ein gruener Workflow ist KEINE Datenfreigabe. Bericht herunterladen und pruefen.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: high52-data-audit-${{ github.run_id }}
+          path: audit-results/
+          if-no-files-found: error
+          retention-days: 30
