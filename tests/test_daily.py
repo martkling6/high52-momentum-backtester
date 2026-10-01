@@ -40,3 +40,17 @@ class DailyTests(unittest.TestCase):
   self.assertEqual(active[0]['date'],passive[0]['date'])
   d=date.fromisoformat(signals[0]['execution_date'])
   self.assertEqual(signals[0]['formation_month'],d.year*12+d.month-3)
+ def test_attribution_reconciles(self):
+  ledger=[]
+  rows,_,_=simulate(self.panel,'high52',25,minimum=3,attribution=ledger)
+  self.assertAlmostEqual(sum(x['net_pnl'] for x in ledger),rows[-1]['equity']-10000,places=6)
+ def test_attribution_open_gap(self):
+  _,orders,_=self.run_model();d=date.fromisoformat(orders[0]['date']);p=copy.deepcopy(self.panel)
+  for x in p[d].values():x['open']=120
+  ledger=[]
+  rows,_,_=simulate(p,'high52',10,minimum=3,attribution=ledger)
+  self.assertAlmostEqual(sum(x['net_pnl'] for x in ledger if x['date']==str(d)),rows[0]['equity']-10000,places=6)
+ def test_position_weights_sum_to_exposure(self):
+  ledger=[];rows,_,_=simulate(self.panel,'passive',10,minimum=3,attribution=ledger)
+  for row in rows[::50]:
+   self.assertAlmostEqual(sum(x['weight'] for x in ledger if x['date']==row['date']),row['gross_exposure'])
