@@ -3,8 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       symbols:
-        description: 'Mindestens 20 Symbole mit Leerzeichen; heutige Liste = Survivorship-Bias'
+        description: 'Explorative feste Aktienliste; Survivorship-Bias, keine Studienreplikation'
         required: true
+        default: 'AAPL.US MSFT.US AMZN.US NVDA.US IBM.US INTC.US CSCO.US ORCL.US JPM.US BAC.US WFC.US GS.US XOM.US CVX.US COP.US SLB.US JNJ.US PFE.US MRK.US UNH.US PG.US KO.US PEP.US WMT.US COST.US HD.US LOW.US CAT.US DE.US MCD.US'
         type: string
       start_date:
         description: 'Datenbeginn inklusive 12 Monate Warmup'
