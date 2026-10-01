@@ -24,7 +24,7 @@ def simulate(panel,mode='high52',bps=10,initial=10000,holding=6,skip=1,minimum=2
  if mode not in ('high52','passive') or bps<0 or initial<=0 or holding<1 or skip<0:raise ValueError('Invalid settings')
  if exit_days is not None:
   from exit_rules import validate_exit_panel,process_exits
-  if mode!='high52' or exit_days not in (3,5,10) or exit_fraction not in (1/3,1/2):raise ValueError('Invalid exit variant')
+  if mode!='high52' or exit_days not in (3,5,10) or exit_fraction not in (0,1/3,1/2):raise ValueError('Invalid exit variant')
   validate_exit_panel(panel)
  elif exit_fraction is not None:raise ValueError('Exit fraction requires exit days')
  sleeves=[{'cash':initial/holding,'units':{}} for _ in range(holding)]
