@@ -1,0 +1,1 @@
+{"holding_months":6,"skip_months":1,"quantile":0.3,"minimum_universe":20,"cost_bps":10,"borrow_rate":0.02,"initial_capital":10000,"mode":"long_only"}
