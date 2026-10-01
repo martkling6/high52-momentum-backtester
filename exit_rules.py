@@ -1,4 +1,4 @@
-"""Per-sleeve partial exits with next-open fills and subsequent entry-price stops."""
+"""Per-sleeve entry-price stops, optionally preceded by a partial next-open sale."""
 import math
 
 
@@ -27,15 +27,16 @@ def process_exits(sleeves, bars, index, day, exit_days, fraction, rate, orders, 
                                'side': 'SELL', 'units': units, 'price': price,
                                'fee': fee, 'reason': reason})
 
-            # The previous close is the only source of a pending partial order.
+            # The previous close is the only source of pending stop activation.
             # A gap can turn the intended profit-taking fill into a loss.
             if position['pending']:
-                sell(sleeve['units'][symbol] * fraction, bar['open'], 'partial_next_open')
+                if fraction > 0:
+                    sell(sleeve['units'][symbol] * fraction, bar['open'], 'partial_next_open')
                 position['pending'] = False
                 position['armed'] = True
 
-            # Stop is active immediately after the partial open fill. A gap below
-            # entry liquidates the remainder at that same open, never at entry.
+            # Stop is active from this open, after any partial fill. A gap below
+            # entry liquidates the held units at that same open, never at entry.
             if position['armed'] and bar['low'] <= position['entry']:
                 price = min(bar['open'], position['entry'])
                 sell(sleeve['units'][symbol], price, 'break_even_stop')
