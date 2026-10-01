@@ -1,0 +1,63 @@
+name: Daily Long-only 52W vs Passive
+on:
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Explorative feste Aktienliste; Survivorship-Bias, keine Studienreplikation'
+        required: true
+        default: 'AAPL.US MSFT.US AMZN.US NVDA.US IBM.US INTC.US CSCO.US ORCL.US JPM.US BAC.US WFC.US GS.US XOM.US CVX.US COP.US SLB.US JNJ.US PFE.US MRK.US UNH.US PG.US KO.US PEP.US WMT.US COST.US HD.US LOW.US CAT.US DE.US MCD.US'
+        type: string
+      start_date:
+        description: 'Datenbeginn inklusive 12 Monate Warmup'
+        required: true
+        default: '2000-01-01'
+        type: string
+      end_date:
+        description: 'Letzter Kalendertag eines abgeschlossenen Monats'
+        required: true
+        default: '2025-12-31'
+        type: string
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYMBOLS: ${{ inputs.symbols }}
+      START_DATE: ${{ inputs.start_date }}
+      END_DATE: ${{ inputs.end_date }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+      - name: Validate symbol input
+        run: |
+          python - <<'PY'
+          import os,re
+          from pathlib import Path
+          symbols=os.environ['SYMBOLS'].split()
+          if not 20<=len(symbols)<=200 or any(not re.fullmatch(r'[A-Za-z0-9_.-]+',s) for s in symbols):
+              raise SystemExit('20 bis 200 gueltige Symbole erforderlich')
+          Path('symbols.txt').write_text('\n'.join(symbols))
+          PY
+      - name: Download daily adjusted-unit sample
+        env:
+          EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
+        run: python download_daily.py --symbols symbols.txt --start "$START_DATE" --end "$END_DATE" --out data/daily.csv
+      - name: Simulate daily positions and compare costs
+        run: |
+          python daily.py --data data/daily.csv --manifest data/daily.manifest.json --out results/daily-study
+          cp data/daily.manifest.json results/data-manifest.json
+          cp DAILY_METHOD.md results/DAILY_METHOD.md
+          cp symbols.txt results/symbols.txt
+          git rev-parse HEAD > results/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: high52-daily-results-${{ github.run_id }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 30
+
