@@ -1,4 +1,4 @@
-name: Exploratory EODHD 52W Test
+name: Long-only 52W vs Passive
 on:
   workflow_dispatch:
     inputs:
@@ -47,10 +47,11 @@ jobs:
         env:
           EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
         run: python download_eodhd.py --symbols symbols.txt --start "$START_DATE" --end "$END_DATE" --out data/eod.csv
-      - name: Run both portfolio modes
+      - name: Compare long-only against lagged passive cohorts
         run: |
           python engine.py --data data/eod.csv --manifest data/eod.manifest.json --config configs/long_only.json --out results/long_only
-          python engine.py --data data/eod.csv --manifest data/eod.manifest.json --config configs/long_short.json --out results/long_short
+          python engine.py --data data/eod.csv --manifest data/eod.manifest.json --config configs/passive_long.json --out results/passive_long
+          python compare.py --active results/long_only/monthly.csv --passive results/passive_long/monthly.csv --out results/comparison
           cp README.md results/METHODOLOGY.md
           cp data/eod.manifest.json results/data-manifest.json
           cp symbols.txt results/symbols.txt
