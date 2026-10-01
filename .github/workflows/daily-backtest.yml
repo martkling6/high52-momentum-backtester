@@ -50,6 +50,7 @@ jobs:
       - name: Simulate daily positions and compare costs
         run: |
           python daily.py --data data/daily.csv --manifest data/daily.manifest.json --out results/daily-study
+          python exit_study.py --data data/daily.csv --manifest data/daily.manifest.json --out results/exit-study
           cp data/daily.manifest.json results/data-manifest.json
           cp DAILY_METHOD.md results/DAILY_METHOD.md
           cp symbols.txt results/symbols.txt
@@ -60,4 +61,3 @@ jobs:
           path: results/
           if-no-files-found: error
           retention-days: 30
-
